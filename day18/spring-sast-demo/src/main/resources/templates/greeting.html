@@ -1,0 +1,26 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Spring SAST Demo</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+<body>
+    <p>This page demonstrates a potentially unsafe way to render user input.</p>
+
+    <!--
+        Using th:utext (unescaped text) with user-controlled input is dangerous
+        and can lead to XSS if the 'name' parameter contains HTML/JavaScript.
+
+        Example of vulnerable URL: /greeting?name=<script>alert('XSS')</script>
+    -->
+    <p th:utext="'Hello, ' + ${name} + '! This is unescaped.'"></p>
+
+    <p>For a safer alternative, always use <b>th:text</b> for user-supplied content, which escapes HTML entities:</p>
+    <p th:text="'Hello, ' + ${name} + '! This is escaped.'"></p>
+
+    <hr/>
+    <p>Try navigating to: <a th:href="@{/greeting(name='<script>alert(\'XSS by utext\')</script>')}">/greeting?name=&lt;script&gt;alert('XSS by utext')&lt;/script&gt;</a></p>
+    <p>Then try this with a page that uses th:text if it were implemented.</p>
+
+</body>
+</html>

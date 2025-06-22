@@ -1,0 +1,25 @@
+<h1>User Profile</h1>
+
+<% if @name_html_safe %>
+  <p>Welcome (unsafely rendered):</p>
+  <div><%= @name_html_safe %></div>
+  <!-- The above line is vulnerable to XSS if @name_html_safe contains malicious HTML/JS -->
+  <!-- Example: /users/show?name=<script>alert('XSS via html_safe')</script> -->
+<% else %>
+  <p>Please provide a name parameter, e.g., <code>?name=YourName</code></p>
+<% end %>
+
+<hr>
+
+<p>Welcome (default Rails escaping):</p>
+<div><%= @name_default_escaped %></div>
+<!-- The above line is safe by default, Rails will escape HTML entities -->
+<!-- Example: /users/show?name=<script>alert('XSS via html_safe')</script>
+     will render as text: <script>alert('XSS via html_safe')</script>
+-->
+
+<p>
+  To test the XSS, try a URL like:
+  <code>/users/show?name=&lt;script&gt;alert('XSS via html_safe')&lt;/script&gt;</code>
+  (Assuming you have set up a route: <code>get 'users/show', to: 'users#show'</code> in <code>config/routes.rb</code>)
+</p>

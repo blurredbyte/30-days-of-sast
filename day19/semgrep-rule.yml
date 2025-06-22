@@ -1,0 +1,36 @@
+rules:
+  - id: ruby-rails-html-safe-usage
+    patterns:
+      - pattern-either:
+          - pattern: $VAR.html_safe
+          - pattern: raw($VAR)
+      - pattern-inside: |
+          def ...(...)
+            ...
+            $INPUT = params[:$SOMETHING]
+            ...
+            $VAR = ... $INPUT ...
+            ...
+          end
+    message: "Potential XSS vulnerability. User input from 'params' is used with '.html_safe' or 'raw'. Ensure the input is properly sanitized if HTML content is intended, or avoid using these methods with raw user input."
+    languages:
+      - ruby
+    severity: WARNING
+    metadata:
+      category: security
+      technology:
+        - rails
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp: "A03:2021 - Injection"
+      description: "Detects direct or indirect usage of .html_safe or raw() on data derived from Rails params."
+      # This is a simplified rule for demonstration.
+      # A more robust rule would involve deeper taint tracking.
+      # For example, checking if $VAR is assigned params or data derived from params.
+      # Semgrep's taint mode (experimental for Ruby) would be more suitable for accuracy.
+      # Example of a more direct but less comprehensive pattern:
+      # - pattern: params[:$SOMETHING].html_safe
+      # - pattern: raw(params[:$SOMETHING])
+    # Note: This rule is illustrative. Real-world detection of this in Rails
+    # often benefits from tools like Brakeman that understand Rails context better,
+    # or more advanced Semgrep taint-tracking rules.
+    # The pattern-inside tries to narrow it down to controller actions where params are accessed.

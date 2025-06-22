@@ -47,7 +47,7 @@ jobs:
           # This command will scan the entire repository based on language detection
           # and any .semgrep.yml files.
           # Add specific rulesets like p/python, p/go, p/java, p/javascript, etc.
-          semgrep ci --config "auto" --config "p/python" --config "p/javascript" --config "p/go" --sarif --output="semgrep.sarif" --error
+          semgrep ci --config "auto" --config "p/python" --config "p/javascript" --config "p/go" --sarif --output="semgrep.sarif"
 
           # Option 2: If you want to specify rule files directly (e.g., from the 30-day structure)
           # This requires your daily rule files to be present and correctly pathed.

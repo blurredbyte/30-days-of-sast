@@ -23,7 +23,7 @@ jobs:
     # Make sure to pin to a specific version for stable CI runs.
     # Check for latest versions at https://hub.docker.com/r/returntocorp/semgrep/tags
     container:
-      image: returntocorp/semgrep:v1.68.0 # Example: Pinned to a specific version
+      image: returntocorp/semgrep # Example: Pinned to a specific version
 
     steps:
       # Step 1: Check out code so the action can access it

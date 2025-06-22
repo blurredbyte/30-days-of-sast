@@ -1,0 +1,108 @@
+# javascript_common_pitfalls.yml
+# Semgrep rules for common JavaScript security pitfalls.
+rules:
+  - id: javascript-eval-usage
+    patterns:
+      - pattern-either:
+        - pattern: eval($ARG)
+        - pattern: $WINDOW.eval($ARG) # e.g. window.eval()
+        - pattern: new Function(...) # Also dangerous, similar to eval
+    message: |
+      Security Risk: Use of `eval()` or `new Function()` is dangerous as it can execute
+      arbitrary code if the argument ($ARG or content of Function) is constructed from
+      user-controlled input. This can lead to Cross-Site Scripting (XSS) or
+      Server-Side JavaScript Injection if on Node.js.
+      Avoid dynamic code execution if possible. For parsing JSON, use `JSON.parse()`.
+      If dynamic execution is absolutely necessary, ensure the input is rigorously sanitized
+      or comes from a fully trusted source.
+    languages: [javascript, typescript]
+    severity: ERROR # High severity due to direct code execution risk
+    metadata:
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+      owasp: "A03:2021-Injection"
+      references:
+        - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval#never_use_eval!
+      tags: [security, injection, xss, ssjs-injection, eval]
+
+  - id: javascript-dangerous-innerhtml-assignment
+    patterns:
+      - pattern: $ELEMENT.innerHTML = $CONTENT
+      # To reduce noise, we can try to exclude assignments of string literals.
+      # This is not foolproof as literals can be constructed, but helps.
+      - pattern-not: $ELEMENT.innerHTML = "..."
+      - pattern-not: $ELEMENT.innerHTML = '...'
+      - pattern-not: $ELEMENT.innerHTML = `...` # Template literal without expressions
+    message: |
+      Security Risk (XSS): Direct assignment to `innerHTML` using non-literal data ($CONTENT)
+      can lead to Cross-Site Scripting (XSS) if the data originates from user input
+      and is not properly sanitized.
+      Prefer using `textContent` for inserting plain text. If HTML insertion is necessary,
+      use a sanitization library (like DOMPurify) or ensure the HTML is constructed safely
+      (e.g., using DocumentFragment or framework-specific safe rendering methods).
+    languages: [javascript, typescript]
+    severity: WARNING # Can be ERROR if $CONTENT is known to be user-controlled
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp: "A03:2021-Injection" # XSS falls under injection
+      references:
+        - https://developer.mozilla.org/en-US/docs/Web/API/Element/innerHTML#security_considerations
+      tags: [security, xss, dom-xss, innerhtml]
+
+  - id: javascript-postmessage-wildcard-targetorigin
+    patterns:
+      - pattern: $SENDER.postMessage($MESSAGE, "*")
+    message: |
+      Security Risk: Using a wildcard '*' as the `targetOrigin` in `postMessage` allows
+      any website to receive the sent message. If the `$MESSAGE` contains sensitive information,
+      this can lead to information disclosure.
+      Always specify the exact `targetOrigin` (e.g., 'https://expected-recipient.example.com')
+      to ensure the message is only sent to the intended recipient.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      cwe: "CWE-201: Information Exposure Through Sent Data" # or CWE-345 if focusing on origin verification
+      owasp: "A01:2021-Broken Access Control" # Can relate if messages control access
+      references:
+        - https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage#security_concerns
+      tags: [security, postmessage, information-leak, cors]
+
+  - id: javascript-prototype-pollution-basic-merge
+    # This is a very basic rule and might be noisy or miss complex cases.
+    # Real prototype pollution detection often requires data flow analysis.
+    patterns:
+      - pattern-either:
+        - pattern: |
+            function $FUNC($TARGET, $SOURCE) {
+              ...
+              for ($KEY in $SOURCE) {
+                ...
+                $TARGET[$KEY] = $SOURCE[$KEY]; // Potential pollution point
+                ...
+              }
+              ...
+            }
+        - pattern: |
+            $TARGET[$KEY_FROM_SOURCE] = $VALUE_FROM_SOURCE // Generic assignment from a source object
+            # Focus on cases where $KEY_FROM_SOURCE could be '__proto__'
+            # This requires more advanced matching, e.g. with metavariable-regex or deeper analysis.
+            # For this example, we'll keep it high-level.
+    message: |
+      Potential Prototype Pollution: Unsafe merging or assignment of properties from a
+      source object to a target object can lead to prototype pollution if the source object
+      contains keys like `__proto__`, `constructor`, or `prototype`, and these are directly
+      assigned to the target. This can alter the behavior of all objects inheriting from the
+      polluted prototype.
+      Validate keys before assignment or use safer merging utilities.
+    languages: [javascript, typescript]
+    severity: INFO # Due to potential for high FPs with this simple pattern
+    metadata:
+      cwe: "CWE-1321: Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')"
+      owasp: "A08:2021-Software and Data Integrity Failures"
+      references:
+        - https://portswigger.net/web-security/prototype-pollution
+      tags: [security, prototype-pollution, object-merge]
+
+# To run these rules:
+# semgrep --config javascript_common_pitfalls.yml your_javascript_file.js
+# or on a directory:
+# semgrep --config javascript_common_pitfalls.yml your_js_project_dir/

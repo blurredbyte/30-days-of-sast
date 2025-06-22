@@ -1,0 +1,71 @@
+# detect_unsafe_subprocess.yml
+rules:
+  - id: python-security-subprocess-shell-true-variable-injection
+    languages: [python]
+    severity: ERROR
+    message: |
+      Detected a `subprocess` call (e.g., run, call, Popen) that uses `shell=True`
+      with a command string that appears to be constructed from or contain a variable.
+      This is a high-risk pattern for command injection vulnerabilities if the variable
+      content can be influenced by external input (e.g., user input, file content, network data).
+
+      To remediate, avoid `shell=True`. Instead, pass commands as a list of arguments
+      (e.g., `subprocess.run(['my_command', 'arg1', 'arg2'])`).
+      If dynamic command parts are necessary, ensure they are passed as separate arguments
+      in the list and not concatenated into a command string executed by a shell.
+    patterns:
+      - pattern-either:
+          # Case 1: Direct variable as command with shell=True
+          # e.g. subprocess.run(cmd_var, shell=True)
+          - pattern: |
+              subprocess.$FUNC($CMD_VAR, ..., shell=True, ...)
+          # Case 2: Variable in keyword argument `cmd` with shell=True
+          # e.g. subprocess.run(..., cmd=cmd_var, ..., shell=True, ...)
+          - pattern: |
+              subprocess.$FUNC(..., cmd=$CMD_VAR, ..., shell=True, ...)
+          # Case 3: String concatenation with a variable to form the command, with shell=True
+          # e.g. subprocess.run("echo " + var, shell=True)
+          - pattern: |
+              subprocess.$FUNC("..." + $ANY_VAR + "...", ..., shell=True, ...)
+          - pattern: |
+              subprocess.$FUNC(f"..." + {$ANY_VAR} + "...", ..., shell=True, ...) # f-string
+          # Case 4: Command string built from a variable in a preceding step, then used with shell=True
+          # e.g., cmd = "base " + var; subprocess.run(cmd, shell=True)
+          - pattern: |
+              $ASSIGNED_CMD_VAR = $ANY_STRING_CONCAT_WITH_VAR
+              ...
+              subprocess.$FUNC($ASSIGNED_CMD_VAR, ..., shell=True, ...)
+      # Filter out cases where the command is a simple string literal, as these are less risky
+      # (though shell=True with any string can sometimes be tricky on Windows if `.` is in PATH).
+      # This is primarily to focus on variable injection.
+      - pattern-not: subprocess.$FUNC("...", ..., shell=True, ...)
+      - metavariable-pattern:
+          metavariable: $ANY_STRING_CONCAT_WITH_VAR
+          patterns:
+            - pattern-either:
+              - pattern: "..." + $ANY_VAR
+              - pattern: $ANY_VAR + "..."
+              - pattern: f"...{$ANY_VAR}..."
+      - metavariable-regex:
+          metavariable: $FUNC # Matches common subprocess functions
+          regex: (run|call|check_call|check_output|Popen)
+    metadata:
+      category: security
+      technology: ["python"]
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      owasp: "A03:2021-Injection"
+      references:
+        - https://docs.python.org/3/library/subprocess.html#security-considerations
+        - https://semgrep.dev/docs/cheat-sheet/
+      tags:
+        - security
+        - command-injection
+        - subprocess
+        - shell-true
+# Note:
+# $CMD_VAR, $ANY_VAR, $ASSIGNED_CMD_VAR are metavariables that will match variable names.
+# The `...` ellipsis matches any sequence of arguments or code.
+# `pattern-not` is used to exclude simple string literals, making the rule focus on dynamic command construction.
+# `metavariable-pattern` is used to define $ANY_STRING_CONCAT_WITH_VAR more precisely.
+# This rule tries to be comprehensive for common vulnerable patterns.
+# Testing with various code snippets is crucial to refine it.

@@ -1,0 +1,131 @@
+# python_web_framework_security.yml
+# Semgrep rules for common security issues in Python web frameworks like Django and Flask.
+rules:
+  - id: python-django-raw-sql-string-formatting
+    patterns:
+      - pattern-either:
+          # Direct %-formatting in execute
+          - pattern: |
+              $CURSOR.execute("..." % ... % ($VAR, ...) % ...)
+          - pattern: |
+              $CURSOR.execute("..." % $VAR)
+          # Direct .format() in execute
+          - pattern: |
+              $CURSOR.execute("... {} ...".format($VAR, ...))
+          - pattern: |
+              $CURSOR.execute(f"...{$VAR}...")
+          # Query built with %-formatting, then executed
+          - pattern: |
+              $QUERY = "... %s ..." % ($VAR, ...)
+              ...
+              $CURSOR.execute($QUERY)
+          # Query built with .format(), then executed
+          - pattern: |
+              $QUERY = "... {} ...".format($VAR, ...)
+              ...
+              $CURSOR.execute($QUERY)
+          # Query built with f-string, then executed
+          - pattern: |
+              $QUERY = f"...{$VAR}..."
+              ...
+              $CURSOR.execute($QUERY)
+      # Ensure we are inside a Django context, typically using `connection.cursor()`
+      - pattern-inside: |
+          from django.db import connection
+          ...
+          with connection.cursor() as $CURSOR:
+            ...
+      # Try to exclude correctly parameterized queries
+      - pattern-not: $CURSOR.execute(..., [..., $VAR, ...])
+      - pattern-not: $CURSOR.execute(..., params=[..., $VAR, ...])
+      - pattern-not: $CURSOR.execute(..., ($VAR,))
+    message: |
+      Django raw SQL query detected using string formatting (%, .format(), or f-string) with variables.
+      This is a high risk for SQL injection vulnerabilities.
+      Always use parameterized queries by passing parameters as a list or tuple
+      in the second argument to `cursor.execute()`.
+      Example: `cursor.execute("SELECT * FROM users WHERE name = %s", [user_name])`
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      owasp: "A03:2021-Injection"
+      framework: django
+      references:
+        - https://docs.djangoproject.com/en/stable/topics/db/sql/#executing-custom-sql-directly
+      tags: [security, sql-injection, django, database]
+
+  - id: python-django-orm-raw-method-string-formatting
+    patterns:
+      - pattern-either:
+          - pattern: $MODEL.objects.raw("..." % ... % ($VAR, ...) % ...)
+          - pattern: $MODEL.objects.raw("..." % $VAR)
+          - pattern: $MODEL.objects.raw("... {} ...".format($VAR, ...))
+          - pattern: $MODEL.objects.raw(f"...{$VAR}...")
+      # Potentially also .extra(), though its `where` clause takes a list of strings.
+      # A simple string formatting into `where` elements would be more complex to write a rule for here.
+      # - pattern: $MODEL.objects.extra(where=["... %s ..." % $VAR, ...])
+    message: |
+      Django ORM `.raw()` method used with string formatting (%, .format(), or f-string).
+      This can lead to SQL injection if variables are incorporated directly into the query string.
+      When using `.raw()`, pass parameters via the `params` argument to ensure they are properly escaped.
+      Example: `MyModel.objects.raw("SELECT * FROM my_table WHERE name = %s", [user_name])`
+      Consider using standard ORM filtering methods if possible, as they are generally safer.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      owasp: "A03:2021-Injection"
+      framework: django
+      references:
+        - https://docs.djangoproject.com/en/stable/ref/models/querysets/#raw
+      tags: [security, sql-injection, django, orm, database]
+
+  - id: python-flask-markupsafe-markup-from-request-data
+    # This rule tries to find flask.Markup() calls where the argument seems to come from request data.
+    # It's an approximation and might need refinement for complex data flows.
+    patterns:
+      - pattern: flask.Markup($DATA_FROM_REQUEST)
+      - pattern-either: # Try to identify $DATA_FROM_REQUEST as coming from request
+        - pattern-inside: |
+            $VAR = request.$ACCESSOR(...) # e.g. name = request.args.get('name')
+            ...
+            flask.Markup($VAR)
+        - pattern-inside: | # Direct usage
+            flask.Markup(request.$ACCESSOR(...))
+        - pattern: flask.Markup(f"...{request.$ACCESSOR(...)}...") # f-string interpolation
+        - pattern: | # Variable assigned from request, then used in f-string passed to Markup
+            $VAR = request.$ACCESSOR(...)
+            ...
+            flask.Markup(f"...{$VAR}...")
+    # $ACCESSOR should match common request attributes like args, form, values, cookies, data
+    # This could be made more precise with metavariable-regex on $ACCESSOR or specific patterns for each.
+    # For simplicity, this rule implies $DATA_FROM_REQUEST is tainted if it matches these patterns.
+    message: |
+      Flask's `Markup()` (or `markupsafe.Markup`) appears to be used with data derived directly
+      from a Flask request object (e.g., `request.args`, `request.form`).
+      `Markup()` explicitly tells Jinja2 that the content is safe and should not be auto-escaped.
+      If the request data contains malicious HTML or JavaScript, this can lead to XSS.
+      Ensure that any data passed to `Markup()` is thoroughly sanitized if it originates from user input.
+      Alternatively, avoid using `Markup()` and let Jinja2's default auto-escaping handle user data.
+    languages: [python]
+    severity: WARNING # Severity can be context-dependent. If data flow is clear, could be ERROR.
+    metadata:
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+      owasp: "A03:2021-Injection" # XSS is an injection type
+      framework: flask
+      references:
+        - https://flask.palletsprojects.com/en/latest/templating/#controlling-autoescaping
+        - https://jinja.palletsprojects.com/en/latest/templates/#html-escaping
+      tags: [security, xss, flask, jinja2, markup]
+
+# Notes for improvement and CodeQL comparison:
+# - The Django SQLi rules could be made more robust by checking the type of $VAR
+#   (e.g., ensuring it's not a literal). Semgrep's type checking is limited.
+# - The Flask Markup rule relies on `pattern-inside` which can be broad. A data-flow
+#   tracking tool like CodeQL would be more precise in confirming that $DATA_FROM_REQUEST
+#   actually originates from `request` and flows into `Markup()` without sanitization.
+#   CodeQL's `RemoteFlowSource` (for request data) and specific sinks for XSS would be used.
+#
+# To run:
+# semgrep --config python_web_framework_security.yml app_django.py app_flask.py

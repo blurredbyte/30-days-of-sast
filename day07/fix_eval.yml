@@ -1,0 +1,85 @@
+# fix_eval.yml
+# Semgrep rules to detect and offer fixes for `eval()` usage in Python.
+rules:
+  - id: python-best-practice-eval-to-ast-literal-eval
+    languages: [python]
+    severity: ERROR
+    message: |
+      Security: `eval()` can execute arbitrary code if the input is not strictly controlled,
+      leading to potential remote code execution vulnerabilities (RCE).
+      If you are evaluating strings that should only contain Python literals
+      (like strings, numbers, tuples, lists, dicts, booleans, None),
+      use the safer `ast.literal_eval()` instead.
+      Ensure `import ast` is present in the file.
+    patterns:
+      - pattern: eval($ARG)
+      # We want to avoid fixing if it's already ast.literal_eval($ARG) or similar safe forms.
+      # This simple rule doesn't have that negative lookahead, but for demonstration it's okay.
+      # A more robust rule might use `pattern-not-inside: ast.literal_eval(...)` if possible,
+      # or be part of a ruleset where more specific rules run first.
+    fix: ast.literal_eval($ARG)
+    metadata:
+      category: security
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+      owasp: "A03:2021-Injection"
+      references:
+        - https://docs.python.org/3/library/functions.html#eval
+        - https://docs.python.org/3/library/ast.html#ast.literal_eval
+        - https://semgrep.dev/docs/writing-rules/autofix/
+      tags:
+        - security
+        - eval-injection
+        - rce
+        - autofix
+      autofix_available: true # Custom tag to indicate autofix is intended
+
+  - id: python-security-comment-out-eval
+    languages: [python]
+    severity: WARNING # Lower severity as it's a more drastic, non-functional change
+    message: |
+      Security: `eval()` is dangerous. `ast.literal_eval()` is a safer alternative for literals.
+      If `ast.literal_eval()` is not suitable for your use case (e.g., you need to evaluate
+      expressions), this indicates a need to fundamentally refactor the code to avoid
+      dynamic code execution with `eval()`. This autofix comments out the `eval()` call
+      and adds a TODO for manual review and secure reimplementation.
+    patterns:
+      - pattern: $RESULT = eval($ARG)
+      # This rule specifically targets eval where its result is assigned.
+      # It provides a slightly different fix than just replacing eval($ARG).
+    fix: |
+      # TODO: [SECURITY CRITICAL] eval() call removed for safety.
+      # Verify if ast.literal_eval is appropriate or if a complete redesign is needed.
+      # Original line: $RESULT = eval($ARG)
+      $RESULT = None # Placeholder for the original variable, to minimize further errors.
+                     # Manual intervention is required to determine the correct action.
+    metadata:
+      category: security
+      cwe: "CWE-95"
+      owasp: "A03:2021-Injection"
+      references:
+        - https://nedbatchelder.com/blog/201206/eval_really_is_dangerous.html
+      tags:
+        - security
+        - eval-injection
+        - manual-review-required
+      autofix_available: true # Custom tag
+
+# Notes on these rules:
+# 1. The first rule (`python-best-practice-eval-to-ast-literal-eval`) is a common recommendation.
+#    However, `ast.literal_eval` has different semantics than `eval` (it doesn't evaluate expressions like "1+1").
+#    Applying this fix blindly might break code if `eval` was used for actual expressions.
+#    The user must ensure `import ast` is present. Semgrep autofix doesn't currently add imports automatically
+#    across files, though within the same file it might be possible with more complex `pattern-inside` logic.
+#
+# 2. The second rule (`python-security-comment-out-eval`) is more of a "safe by default" approach when
+#    a direct functional replacement isn't straightforward. It makes the code non-functional at that point
+#    but prevents the security risk, forcing a developer to address it.
+#
+# 3. In a real ruleset, you might order these or make them more specific. For example, you could have a rule
+#    that only suggests `ast.literal_eval` if the context implies a literal is expected, or have the
+#    comment-out rule trigger if the `eval` is NOT being assigned to anything (fire-and-forget `eval`).
+#
+# To run:
+# semgrep --config fix_eval.yml your_file.py
+# To apply fixes:
+# semgrep --config fix_eval.yml your_file.py --autofix

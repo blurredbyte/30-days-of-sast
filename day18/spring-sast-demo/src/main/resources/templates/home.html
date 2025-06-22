@@ -1,0 +1,66 @@
+<!-- spring-sast-demo/src/main/resources/templates/home.html -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Spring SAST Demo - Home</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        a { text-decoration: none; color: #007bff; }
+        a:hover { text-decoration: underline; }
+        .actions a { margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Product Catalog</h1>
+
+    <h2>Search Products (Conceptual SQLi Demo)</h2>
+    <form action="/products/search_vulnerable_sqli" method="get">
+        Category: <input type="text" name="category" value="Electronics">
+        Sort Field: <input type="text" name="sortField" value="name">
+        Sort Direction: <input type="text" name="sortDir" value="ASC">
+        <input type="submit" value="Search (Potentially Vulnerable SQLi)">
+    </form>
+    <p><small>Note: The backend repository method for this search is currently safe due to named parameters.
+        A vulnerability would exist if the repository constructed SQL via string concatenation with these inputs.</small></p>
+
+    <hr>
+
+    <h2>All Products</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="product : ${products}">
+                <td th:text="${product.id}">1</td>
+                <td th:text="${product.name}">Product Name</td>
+                <td th:text="${product.category}">Category</td>
+                <td th:text="${product.description}">Description</td>
+                <td class="actions">
+                    <a th:href="@{/product/view_vulnerable_xss(id=${product.id}, referrerName='HomePageXSSLink')}">View (XSS Vulnerable)</a>
+                    <a th:href="@{/product/view_safe_xss(id=${product.id}, referrerName='HomePageSafeLink')}">View (XSS Safe)</a>
+                </td>
+            </tr>
+            <tr th:if="${#lists.isEmpty(products)}">
+                <td colspan="5">No products found.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <hr>
+    <p>
+        <small>This demo application is for SAST tool testing purposes.</small>
+    </p>
+
+</body>
+</html>

@@ -1,0 +1,54 @@
+# detect_md5.yml
+# This is a Semgrep rule file.
+# It defines a rule to detect the usage of MD5 hashing in Python code.
+
+rules:
+  - id: custom-python-detect-md5-usage
+    # `pattern` is a simple way to match code that looks like this.
+    # The `...` (ellipsis) operator matches any sequence of arguments or statements.
+    pattern: hashlib.md5(...)
+    message: |
+      MD5 is a cryptographically weak hashing algorithm.
+      It is vulnerable to collision attacks and should not be used for security-sensitive
+      applications like password hashing or digital signatures.
+      Consider using stronger algorithms like SHA-256, SHA-3, or bcrypt/scrypt for passwords.
+    languages: [python] # This rule applies to Python code
+    severity: WARNING # Severity can be INFO, WARNING, or ERROR
+    metadata:
+      category: security
+      technology:
+        - python
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      owasp:
+        - A02:2021 - Cryptographic Failures
+      references:
+        - https://owasp.org/www-project-top-ten/2017/A3_2017-Sensitive_Data_Exposure
+        - https://en.wikipedia.org/wiki/MD5#Security
+      tags:
+        - security
+        - cryptography
+        - hashing
+        - md5
+# You can add more rules to this file. Each rule starts with `- id: ...`
+# Example of how to potentially find direct imports if needed, though the above is usually sufficient:
+#
+#  - id: custom-python-detect-md5-import
+#    patterns:
+#      - pattern-either:
+#          - pattern: from hashlib import md5
+#          - pattern: import hashlib as $H; $H.md5(...) # More complex, using metavariables
+#    message: "Direct import of MD5 detected. Ensure it's not used for security purposes."
+#    languages: [python]
+#    severity: INFO
+#    metadata:
+#      category: security
+#      tags:
+#        - security
+#        - cryptography
+#        - md5
+#        - import
+#
+# To run this rule:
+# semgrep --config detect_md5.yml your_python_file.py
+# or on a directory:
+# semgrep --config detect_md5.yml your_python_project_dir/

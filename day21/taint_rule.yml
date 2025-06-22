@@ -1,0 +1,60 @@
+# This is a CONCEPTUAL Semgrep rule for taint analysis.
+# For actual Semgrep taint rule syntax, please refer to the official Semgrep documentation:
+# https://semgrep.dev/docs/writing-rules/data-flow-rules/
+#
+# This example aims to illustrate the *idea* of sources, sinks, and sanitizers.
+
+rules:
+  - id: python-sqli-fstring-example
+    mode: taint # Indicates this is a taint analysis rule (actual syntax might vary)
+    message: "Potential SQL Injection: Data from 'username' (source) flows into an f-string used in 'cursor.execute()' (sink) without sanitization."
+    languages: [python]
+    severity: ERROR
+    # Defining sources: Where tainted data originates
+    pattern-sources:
+      - pattern: |
+          def get_user_data_vulnerable(username):
+              ...
+          # The 'username' parameter of this specific function is considered a source.
+          # In a real scenario, sources might be flask.request.args, os.environ, etc.
+    # Defining sinks: Where tainted data can cause harm
+    pattern-sinks:
+      - pattern: $CURSOR.execute(f"...")
+        # Specifically, an f-string passed to cursor.execute()
+        # $CURSOR is a metavariable for any cursor object.
+    # Defining sanitizers (Optional): How data can be cleaned
+    # pattern-sanitizers:
+    #   - pattern: some_sanitization_function($X)
+    #   - pattern: $DB_LIB.escape($X)
+    # This rule doesn't explicitly define a sanitizer for this example,
+    # but in a real rule, you would define how data is considered safe.
+    # For instance, using parameterized queries (e.g., cursor.execute("... ?", (param,)))
+    # would mean the data doesn't flow *into the query string itself* in a dangerous way,
+    # so the sink `cursor.execute(f"...")` wouldn't be matched by the safe version.
+
+    metadata:
+      category: security
+      technology:
+        - python
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+      owasp: "A03:2021 - Injection"
+      description: "Illustrative taint rule for f-string SQL injection in Python."
+      # Note: Real Semgrep taint rules require a more structured definition of sources, sinks,
+      # and how data propagates. For example:
+      #
+      # rules:
+      # - id: example-python-sqli
+      #   mode: taint
+      #   pattern-sources:
+      #     - pattern: app.route(...)
+      #                 def $ROUTE(..., $PARAM, ...): ...
+      #                 # This marks $PARAM as a source if it's a route parameter
+      #   pattern-sinks:
+      #     - pattern: $DB.execute("..." % $DATA, ...)
+      #   message: Taint flow to SQL query
+      #   languages: [python]
+      #   severity: ERROR
+      #
+      # This conceptual rule here is simplified to align with the basic example code.
+      # The key is that Semgrep would track if data from a 'pattern-sources'
+      # can reach a 'pattern-sinks' without passing through a 'pattern-sanitizers'.

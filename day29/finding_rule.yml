@@ -1,0 +1,64 @@
+# Conceptual Semgrep Rule for detecting potential IDOR
+# This rule is simplified for illustration. A robust IDOR rule
+# would require more sophisticated taint tracking and context awareness.
+
+rules:
+  - id: java-idor-pattern-invoiceservice-getbyid
+    mode: taint # Indicating this aims for taint tracking behavior
+    message: "Potential IDOR: User-controlled input from 'request.getParameter(\"id\")' is used to fetch an Invoice via 'invoiceService.getInvoiceById()'. Ensure proper authorization checks are performed on the retrieved invoice against the current user."
+    languages: [java]
+    severity: WARNING # IDORs are often High/Critical, but a generic pattern might be WARNING
+    metadata:
+      category: security
+      cwe: "CWE-639: Authorization Bypass Through User-Controlled Key" # (IDOR)
+      owasp: "A01:2021 - Broken Access Control"
+      description: "Detects when 'request.getParameter(\"id\")' is passed to 'invoiceService.getInvoiceById' without apparent authorization checks on the result."
+      # This is a conceptual rule. Real IDOR detection is complex.
+
+    # Define sources of tainted data (user input)
+    pattern-sources:
+      - pattern: $REQ.getParameter("id")
+        # $REQ is a metavariable matching any HttpServletRequest object.
+        # This specifically looks for the "id" parameter.
+
+    # Define sinks where tainted data could cause harm if not validated
+    pattern-sinks:
+      - pattern: $SERVICE.getInvoiceById($TAINTED_ID)
+        # $SERVICE is a metavariable for an InvoiceService object.
+        # $TAINTED_ID is the argument we expect to be tainted.
+        # Semgrep's taint mode will try to see if data from a source flows to $TAINTED_ID.
+
+    # Define sanitizers or validation steps (this is the tricky part for IDOR)
+    # A true sanitizer for IDOR in this context would be an authorization check.
+    # For example: if (invoice.getUserId().equals(currentUser.getId())) { ... }
+    # Modeling this accurately in a generic way is hard.
+    # This rule, in its simplest form, might not have a sanitizer defined,
+    # relying on the message to prompt manual review for authorization.
+    #
+    # pattern-sanitizers:
+    #   - pattern: |
+    #       if ($INVOICE.getUserId().equals($USER.getId())) {
+    #         ... $INVOICE ... // $INVOICE is considered safe within this block for this user
+    #       }
+    # This kind of sanitizer is complex to implement correctly in Semgrep for all cases.
+
+    # Focus: The main goal of this simplified rule is to flag the direct flow
+    # from request parameter to service call, prompting a manual check for authorization.
+    # A more advanced rule would attempt to detect the *absence* of an authorization check
+    # between the sink (getInvoiceById) and the usage of the resulting 'invoice' object.
+
+    # Example of how one might try to look for the absence of a check (very pseudo-codey):
+    # pattern: |
+    #   $INV = $SERVICE.getInvoiceById($TAINTED_ID);
+    #   ... // code that uses $INV
+    # pattern-not-inside: | // Ensure the usage of $INV is not within a proper auth check block
+    #   if ($INV.getUserId().equals($CURRENT_USER.getId())) {
+    #     ... $INV ...
+    #   }
+
+    # For this case study, the core idea is the source-to-sink flow:
+    # request.getParameter("id") --> invoiceService.getInvoiceById(id_from_param)
+    # The message then tells the user what to look for (the auth check).
+    # This is often a starting point for IDOR detection with SAST.
+    # CodeQL might be better suited for the more complex "absence of check" logic
+    # due to its deeper data flow and control flow analysis capabilities.

@@ -1,0 +1,45 @@
+rules:
+  - id: nodejs-express-command-injection-child_process-exec
+    patterns:
+      - pattern-inside: |
+          require('express')(...)
+          ...
+      - pattern-either:
+          - pattern: require('child_process').exec($CMD, ...)
+          - pattern: |
+              import { exec } from 'child_process';
+              ...
+              exec($CMD, ...)
+          - pattern: |
+              const { exec } = require('child_process');
+              ...
+              exec($CMD, ...)
+      - pattern-not-inside: |
+          exec("...", ...) // string literal command is less of a concern unless it's also built with variables
+      - focus-metavariable: $CMD
+      - metavariable-regex:
+          metavariable: $CMD
+          regex: .*req\.(query|body|params).* # Check if command string contains req.query, req.body, or req.params
+    message: "Potential Command Injection. User input from Express 'req.query', 'req.body', or 'req.params' seems to be used in 'child_process.exec'. If 'exec' is used, ensure the command string is not built with unsanitized user input. Consider using 'child_process.execFile' or 'spawn' with distinct arguments for safety."
+    languages:
+      - javascript
+      - typescript
+    severity: ERROR
+    metadata:
+      category: security
+      technology:
+        - nodejs
+        - express
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+      owasp: "A03:2021 - Injection"
+      description: "Detects usage of child_process.exec() where the command string might be constructed using user input from an Express request object."
+      # This rule uses metavariable-regex to check if the command argument ($CMD)
+      # contains patterns like req.query, req.body, or req.params.
+      # This is a common way user input flows into the command.
+      # A more robust solution would use taint tracking if available and well-supported for JS in Semgrep.
+      # For example, `semgrep --experimental -e '...' --taint-mode ...`
+    # Note: This rule is illustrative and might have false positives or negatives.
+    # For example, if req.query is used for something else and not part of the command itself,
+    # or if the input is properly sanitized before use (which this rule doesn't check deeply).
+    # A full taint analysis would be more accurate.
+    # The `pattern-not-inside` for string literals is a simple heuristic to reduce FPs from hardcoded commands.

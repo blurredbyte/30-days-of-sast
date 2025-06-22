@@ -1,0 +1,29 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Spring SAST Demo - Unsafe</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+<body>
+    <p>This page INTENTIONALLY uses th:utext to demonstrate an XSS vulnerability for SAST tools to find.</p>
+
+    <!--
+        Using th:utext (unescaped text) with user-controlled input is dangerous
+        and can lead to XSS if the 'name' parameter contains HTML/JavaScript.
+
+        Example of vulnerable URL: /unsafe-greeting?name=<script>alert('XSS on unsafe page')</script>
+    -->
+    <div th:utext="${name}"></div>
+
+    <hr/>
+    <p>Try navigating to:
+        <a th:href="@{/unsafe-greeting(name='<img src=x onerror=alert(\'XSS!\')>')}">
+            /unsafe-greeting?name=&lt;img src=x onerror=alert('XSS!')&gt;
+        </a>
+    </p>
+    <p>
+        A SAST tool should ideally flag the use of `th:utext` with `model.addAttribute("name", name)`
+        where `name` is a request parameter, as a potential XSS vulnerability.
+    </p>
+</body>
+</html>

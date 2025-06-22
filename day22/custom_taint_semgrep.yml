@@ -1,0 +1,91 @@
+# Semgrep rule for custom taint tracking in the Java example
+# This rule aims to find flows from `UserInputString` to `Log.sensitiveData`
+# unless validated by `Validator.isValid` or sanitized by `Validator.sanitize`.
+
+rules:
+  - id: java-custom-userinputstring-to-log-sensitiveData
+    mode: taint
+    message: "Potential sensitive data exposure: Data from `UserInputString` flows to `Log.sensitiveData()` without proper validation or sanitization. Ensure `UserInputString` instances are passed through `Validator.isValid()` or `Validator.sanitize()` before logging with `Log.sensitiveData()`."
+    languages: [java]
+    severity: WARNING # Could be ERROR depending on the sensitivity
+    metadata:
+      category: security
+      technology:
+        - java
+      cwe: "CWE-200: Exposure of Sensitive Information to an Unauthorized Actor" # Or CWE-532 if logging sensitive data
+      description: "Tracks UserInputString instances to Log.sensitiveData sink, considering Validator methods as sanitizers."
+
+    # Define what we consider as a source of tainted data
+    pattern-sources:
+      # Source 1: An instance of UserInputString itself is tainted.
+      - pattern: |
+          new UserInputString(...)
+      # Source 2: A variable declared as UserInputString is tainted.
+      - pattern: |
+          UserInputString $VAR = ...;
+      # Source 3: A method parameter of type UserInputString is tainted.
+      - pattern-inside: |
+          public ... $METHOD(..., UserInputString $PARAM, ...) {
+            ...
+          }
+        pattern: $PARAM
+
+
+    # Define what we consider as a sink for tainted data
+    pattern-sinks:
+      - pattern: com.example.Log.sensitiveData($ARG1, $DATA)
+        # We are interested if $DATA is tainted.
+        # $DATA here is a metavariable matching the second argument.
+
+    # Define sanitizers that clean the tainted data
+    pattern-sanitizers:
+      # Sanitizer 1: If the UserInputString object (or data from it) is passed through Validator.isValid()
+      # This is a bit tricky. We want to sanitize if the flow is conditional on isValid.
+      # A simple way is to sanitize the variable if it appears in an `if(Validator.isValid(...))`
+      # This requires careful thought on how Semgrep propagates sanitization.
+      # Option A: Sanitize variables used inside an if block guarded by Validator.isValid
+      - pattern: |
+          if (com.example.Validator.isValid($TAINTED_VAR)) {
+            ...
+            $TAINTED_VAR // Marks $TAINTED_VAR as sanitized within this block
+            ...
+          }
+      # Option B: More directly, if the result of getData() is from a validated object.
+      # This may need more complex rule logic, potentially using pattern-propagators.
+      # For now, let's assume a simpler model: data passed to sensitiveData
+      # is considered sanitized if it was part of a successful Validator.isValid check.
+
+      # Sanitizer 2: If data is the result of Validator.sanitize()
+      - pattern: com.example.Validator.sanitize($ANY_INPUT)
+
+    # This is a simplified taint rule. A more robust rule might need to:
+    # - Track data flow more precisely (e.g., from `userInput.getData()` to the sink).
+    #   This can be done using `pattern-propagators` to define how taint moves.
+    #   For example, from `UserInputString x` to `x.getData()`.
+    #
+    # Example of a propagator (conceptual):
+    # pattern-propagators:
+    #  - pattern: |
+    #      $TAINTED_OBJ.getData()
+    #    from: $TAINTED_OBJ
+    #    to: $RETURN_VALUE_OF_GETDATA  (this is pseudocode for return)
+
+    # For this example, we'll rely on Semgrep's default propagation for direct usage
+    # and the source patterns covering `UserInputString` instances.
+    # The rule will primarily flag if a `UserInputString` instance or its direct `getData()` result
+    # reaches `Log.sensitiveData` without an intervening `Validator.isValid` check
+    # or `Validator.sanitize` call on the path.
+
+    # A more precise rule might look like:
+    # pattern-sinks:
+    #  - focus-metavariable: $SINK_ARG
+    #    pattern: com.example.Log.sensitiveData(..., $SINK_ARG)
+    # And then Semgrep tries to find if $SINK_ARG originates from a pattern-source
+    # without passing through a pattern-sanitizer.
+
+    # This rule is illustrative. Fine-tuning is often needed for real-world accuracy.
+    # The key is:
+    # 1. Identify your custom sources.
+    # 2. Identify your custom sinks.
+    # 3. Identify your custom sanitizers/validators.
+    # 4. Write patterns for each and let Semgrep connect them.
